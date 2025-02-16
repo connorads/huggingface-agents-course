@@ -1,21 +1,87 @@
-from smolagents import CodeAgent, DuckDuckGoSearchTool, HfApiModel, load_tool, tool
+from smolagents import (
+    CodeAgent,
+    VisitWebpageTool,
+    DuckDuckGoSearchTool,
+    FinalAnswerTool,
+    HfApiModel,
+    load_tool,
+    tool,
+)
+from markitdown import MarkItDown
 import datetime
 import pytz
 import yaml
-from tools import FinalAnswerTool
 
 from Gradio_UI import GradioUI
 
-# Below is an example of a tool that does nothing. Amaze us with your creativity!
+import os
+import requests
+from urllib.parse import urlparse
+
+
 @tool
-def my_custom_tool(arg1:str, arg2:int)-> str: # it's important to specify the return type
-    # Keep this format for the tool description / args description but feel free to modify the tool
-    """A tool that does nothing yet 
-    Args:
-        arg1: the first argument
-        arg2: the second argument
+def download_file(url: str, filename: str = None) -> str:
     """
-    return "What magic will you build ?"
+    Downloads a file from an HTTP URL to the './temp' directory.
+    The directory is created if it does not already exist.
+
+    Args:
+        url: The HTTP URL of the file to download.
+        filename: (Optional) The name to save the file as. If not provided, the filename is inferred from the URL.
+
+    Returns:
+        The local path to the downloaded file.
+    """
+    # Define the target directory and create it if it doesn't exist
+    temp_dir = "./temp"
+    os.makedirs(temp_dir, exist_ok=True)
+
+    # If no filename is provided, attempt to extract it from the URL
+    if not filename:
+        parsed_url = urlparse(url)
+        filename = os.path.basename(parsed_url.path)
+        if not filename:
+            # Use a generic filename with a timestamp if extraction fails
+            import time
+
+            filename = f"downloaded_{int(time.time())}"
+
+    local_path = os.path.join(temp_dir, filename)
+
+    try:
+        # Stream the download to handle large files efficiently
+        response = requests.get(url, stream=True)
+        response.raise_for_status()  # Raise an error for bad responses
+
+        with open(local_path, "wb") as file:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:  # Filter out keep-alive chunks
+                    file.write(chunk)
+        return local_path
+
+    except Exception as e:
+        return f"Error downloading file: {str(e)}"
+
+
+@tool
+def to_markdown(file_path: str) -> str:
+    """
+    MarkItDown is a utility for converting various files to Markdown
+    (e.g., for indexing, text analysis, etc). It supports:
+    PDF, PowerPoint, Word, Excel, Images (EXIF metadata and OCR),
+    Audio (EXIF metadata and speech transcription), HTML,
+    Text-based formats (CSV, JSON, XML),
+    ZIP files (iterates over contents)
+
+    Args:
+        file_path: The path to the file.
+    Returns:
+        A string containing the content of the file.
+    """
+    md = MarkItDown()
+    result = md.convert(file_path)
+    return result.text_content
+
 
 @tool
 def get_current_time_in_timezone(timezone: str) -> str:
@@ -33,31 +99,40 @@ def get_current_time_in_timezone(timezone: str) -> str:
         return f"Error fetching time for timezone '{timezone}': {str(e)}"
 
 
-final_answer = FinalAnswerTool()
 model = HfApiModel(
-max_tokens=2096,
-temperature=0.5,
-model_id='Qwen/Qwen2.5-Coder-32B-Instruct',
-custom_role_conversions=None,
+    max_tokens=2096,
+    temperature=0.5,
+    model_id="Qwen/Qwen2.5-Coder-32B-Instruct",
+    custom_role_conversions=None,
 )
 
 
 # Import tool from Hub
 image_generation_tool = load_tool("agents-course/text-to-image", trust_remote_code=True)
 
-with open("prompts.yaml", 'r') as stream:
+
+final_answer = FinalAnswerTool()
+with open("prompts.yaml", "r") as stream:
     prompt_templates = yaml.safe_load(stream)
-    
+
 agent = CodeAgent(
     model=model,
-    tools=[final_answer], # add your tools here (don't remove final_answer)
+    tools=[
+        image_generation_tool,
+        get_current_time_in_timezone,
+        to_markdown,
+        download_file,
+        VisitWebpageTool(),
+        DuckDuckGoSearchTool(),
+        final_answer,
+    ],
     max_steps=6,
     verbosity_level=1,
     grammar=None,
     planning_interval=None,
     name=None,
     description=None,
-    prompt_templates=prompt_templates
+    prompt_templates=prompt_templates,
 )
 
 

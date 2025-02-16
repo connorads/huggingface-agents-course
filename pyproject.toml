@@ -8,6 +8,7 @@ dependencies = [
     "duckduckgo-search>=7.3.2",
     "gradio>=5.16.0",
     "markdownify>=0.14.1",
+    "markitdown>=0.0.1a4",
     "pandas>=2.2.3",
     "requests>=2.32.3",
     "smolagents>=1.9.2",
