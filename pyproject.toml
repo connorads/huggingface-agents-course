@@ -10,4 +10,5 @@ dev = [
     "huggingface-hub>=0.28.1",
     "ipykernel>=6.29.5",
     "ipywidgets>=8.1.5",
+    "nbstripout>=0.8.1",
 ]
